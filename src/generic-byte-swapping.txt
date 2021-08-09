@@ -1,0 +1,35 @@
+    Generic
+        Type Element(<>) is limited private;
+    Procedure Generic_Swap( Object : in out Element )
+      with Inline;
+    
+    Procedure Generic_Swap( Object : in out Element ) is
+        Pragma Assert(Object'Size mod 8 = 0, "Bits must be divisable by 8.");
+        Pragma Assert(Object'Size / 8 in 0|1|2|4|8|16|32|64|128|256, "Must be a power of 2, in 0..256.");
+        Type Byte_Array is Array(Positive range <>) of Interfaces.Unsigned_8
+          with Component_Size => 8;
+        
+        Procedure Swap( Object : in out Byte_Array ) with Inline is
+        Begin
+            if Object'Length < 2 then
+                return;
+            else
+                Declare
+                    Half  : Constant Positive := (Object'Length/2);
+                    Subtype Tail is Positive range Object'First+Half..Object'Last;
+                    Subtype Head is Positive range Object'First..Positive'Pred(Tail'First);
+                    Temp  : Constant Byte_Array:= Object(Head);
+                Begin
+                    Object(Head):= Object(Tail);
+                    Object(Tail):= Temp;
+                    Swap( Object(Head) );
+                    Swap( Object(Tail) );
+                End;
+            end if;
+        End Swap;
+        
+        Bytes : Byte_Array(1..Object'Size/8)
+                  with Import, Address => Object'Address;
+    Begin
+        Swap( Bytes );
+    End Generic_Swap;

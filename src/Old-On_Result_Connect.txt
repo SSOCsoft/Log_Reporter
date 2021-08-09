@@ -1,0 +1,322 @@
+   procedure On_Result_Connect
+     (Main_Window : in out Gnoga.Gui.Window.Window_Type'Class;
+      Connection  : access
+        Gnoga.Application.Multi_Connect.Connection_Holder_Type)
+   is
+--        pragma Unreferenced (Connection);
+--        --  Since there will be no interactions with page once displayed there
+--        --  is no need to setup any data to associate with the main window.
+--
+              App : constant App_Access := App_Access(Main_Window.Connection_Data);
+      Result_View : constant Gnoga.Gui.View.View_Access :=
+        new Gnoga.Gui.View.View_Type;
+   begin
+      Result_View.Dynamic;
+      --  By marking the View dynamic it will be deallocated by Main_Window
+      --  when it finalizes.
+      Result_View.Create (Main_Window);
+        --App.My_Done.Place_Inside_Bottom_Of( Element.Class(Main_Window) );
+
+        FORM_DATA:
+        Declare
+            k : Constant String := "K!";
+            Name       : String renames Main_Window.Form_Parameter ("Name");
+            Message    : String renames Main_Window.Form_Parameter ("Message");
+            Conditions : String renames Main_Window.Form_Parameter ("Conditions");
+            Observer   : String renames Main_Window.Form_Parameter ("Observer");
+            CRLF : Constant String := (ASCII.CR, ASCII.LF);
+        Begin
+--              Ada.Text_IO.Put_Line( (1..20 => ':') &
+--              Gnoga.Server.Connection.Execute_Script(
+--                 ID     => Main_Window.Connection_ID,
+--                 Script => --"params"
+--                           "var alertText = ' '; "            & --CRLF &
+--                           "for (property in params) {"       & --CRLF &
+--                           "   alertText += property + ':' "  &
+--                                "+ params[property]+'; ';"   & --CRLF &
+--                           "} "                               & --CRLF &
+--                           "params.toSource();"                & --CRLF &
+--                             ""
+--
+--  --"''+params;"
+--  --               "params['" & Name & "'];"
+--                ));
+
+--------------------------------------------------------------------------------
+--------------------------------------------------------------------------------
+--------------------------------------------------------------------------------
+
+--              FORM_PARAMETER_TEST:
+--              Declare
+--                  Use NSO.Types;
+--
+--                  Package Parameter_List renames NSO.Types.String_Map;
+--  --                  is new Ada.Containers.Indefinite_Ordered_Maps(
+--  --  --                     "<"          => ,
+--  --  --                     "="          => ,
+--  --                     Key_Type     => String,
+--  --                     Element_Type => String
+--  --                    );
+--
+--                  Function Get_Parameters(Object : NSO.JSON.Instance'Class) return Parameter_List.Map is
+--                      Use Parameter_List, NSO.JSON;
+--                      Temp : Instance'Class := Object;
+--                  Begin
+--                      Return Result : Map := Empty_Map do
+--                          Declare
+--                              Procedure Add_Item(Key : String; Value : NSO.JSON.Instance'Class) is
+--                              begin
+--                                  Result.Include(New_Item => -Value, Key => Key);
+--                              end Add_Item;
+--
+--                              Procedure Do_It is new NSO.JSON.Apply
+--                                ( On_Object => Add_Item );
+--                          Begin
+--                              Do_It( Temp );
+--                          End;
+--                      End return;
+--                  End Get_Parameters;
+--
+--
+--                  FP : String renames
+--                    Gnoga.Server.Connection.Execute_Script(
+--                       ID     => Main_Window.Connection_ID,
+--                       Script => "JSON.stringify( params )"-- "params.toSource();"
+--                      );
+--                  Params : String renames FP;
+--  --                    FP( Positive'Succ(FP'First)..Positive'Pred(FP'Last) );
+--                  PS : Aliased String_Stream:= +(Params);
+--              Begin
+--                  Ada.Text_IO.Put_Line((1..20 => ':') & Params & (1..20 => ':'));
+--                  DECLARE
+--                      Item : NSO.JSON.Instance'Class :=
+--                        NSO.JSON.Instance'Class'Input( PS'Access );
+--                      Data : NSO.Types.Report_Objects.Report_Map.Map
+--                        renames NSO.Types.Report_Objects.Report(Data => Item);
+--                      Procedure Print(Cursor : Parameter_List.Cursor) is
+--                          Value : String renames Parameter_List.Element( Cursor );
+--                          Key   : String renames Parameter_List.Key( Cursor );
+--                      Begin
+--                          Ada.Text_IO.Put_Line(Key & (' ',':',ASCII.HT) & Value);
+--                      End Print;
+--                  Begin
+--                      Ada.Text_IO.Put_Line("JSON CREATED.");
+--                      Get_Parameters(Item).Iterate( Print'Access );
+--                      --                    Report_Objects.Report
+--                      Ada.Text_IO.Put_Line( NSO.Types.Report_Objects.Report(Data) );
+--
+--  --                      For X in Data.Iterate loop
+--  --                          Ada.Text_IO.Put_Line( NSO.Types.Report_Objects.Report(X) );
+--  --                      End loop;
+--
+--                  End;
+--
+--              End FORM_PARAMETER_TEST;
+
+
+            Result_View.Put_Line ("Name : " & Name);
+            Result_View.Put_Line ("Message : " & Message);
+            Result_View.Put_Line ("Conditions : " & Conditions);
+
+            EMAIL:
+            Declare
+                ---------------------------------------------
+                -- GET PARAMETER-DATA AND GENERATE REPORTS --
+                ---------------------------------------------
+                Package GO renames NSO.JSON.Gnoga_Object;
+                Package RO renames NSO.Types.Report_Objects;
+
+                Function Shim_Parameters (O : NSO.JSON.Gnoga_Object.Form_Object)
+                  return NSO.JSON.Gnoga_Object.JSON_Class is
+                    (NSO.JSON.Gnoga_Object.Get_JSON(O));
+
+--                  Function JSON_TO_HTML_Report is new NSO.JSON.Gnoga_Object.Report_View(
+--                       Form       => NSO.JSON.Gnoga_Object.Form_Object,
+--                       Params     => NSO.JSON.Gnoga_Object.JSON_Class,
+--                       Report     => NSO.Types.Report_Objects.Report_Map.Map,
+--                       View       => String,
+--                       Submission => Shim_Parameters,
+--                       Parameters => NSO.Types.Report_Objects.Report,
+--                       Processing => NSO.Types.Report_Objects.Report
+--                      );
+--
+--                  Function Observation_Report_TO_HTML is new NSO.JSON.Gnoga_Object.Report_View(
+--                       Form       => NSO.JSON.Gnoga_Object.Form_Object,
+--                       Params     => NSO.JSON.Gnoga_Object.JSON_Class,
+--                       Report     => NSO.Types.Report_Objects.Observation_Report.Report_Map.Map,
+--                       View       => String,
+--                       Submission => NSO.JSON.Gnoga_Object.Parameters,
+--                       Parameters => NSO.Types.Report_Objects.Observation_Report.Report,
+--                       Processing => NSO.Types.Report_Objects.Observation_Report.Report
+--                      );
+
+                Package Reports is new NSO.JSON.Gnoga_Object.Generic_Reporter(
+                   Form       => NSO.JSON.Gnoga_Object.Form_Object,
+                   Params     => NSO.JSON.Gnoga_Object.JSON_Class,
+                   Parameters => NSO.JSON.Gnoga_Object.Parameters,
+                   This       => NSO.JSON.Gnoga_Object.As_Form(Main_Window)
+                  );
+
+                Function Observation_Table is new Reports.Generate_Report(
+                   Report     => RO.Observation_Report.Report_Map.Map,
+                   View       => String,
+                   Get_Report => RO.Observation_Report.Report,
+                   Processing => RO.Observation_Report.Report
+                  );
+
+                Function Weather_Table is new Reports.Generate_Report(
+                   Report     => RO.Weather_Report.Report_Map.Map,
+                   View       => String,
+                   Get_Report => RO.Weather_Report.Report,
+                   Processing => RO.Weather_Report.Report
+                  );
+
+                Use NSO.Types;
+--                  Parameter_Data  : String renames
+--                    Gnoga.Server.Connection.Execute_Script(
+--                       ID     => Main_Window.Connection_ID,
+--                       Script => "JSON.stringify( params )"-- "params.toSource();"
+--                      );
+--                  Parameter_Stream: Aliased String_Stream:= +(Parameter_Data);
+--                  Parameter_JSON  : NSO.JSON.Instance'Class :=
+--                        NSO.JSON.Instance'Class'Input( Parameter_Stream'Access );
+--                  Weather_Report  : NSO.Types.Report_Objects.Weather_Report.Report_Map.Map
+--                     renames NSO.Types.Report_Objects.Weather_Report.Report(Parameter_JSON);
+--  --                  Weather_Table   : String
+--  --                     renames --NSO.Types.Report_Objects.Report(Weather_Report);
+--  --                  JSON_TO_HTML_Report( NSO.JSON.Gnoga_Object.As_Form(Main_Window) );
+--  --
+--  --                  Observation_Table   : String
+--  --                     renames
+--  --                    Observation_Report_TO_HTML( NSO.JSON.Gnoga_Object.As_Form(Main_Window) );
+--  
+--                  Insturment_Table : String := "";
+
+
+                Procedure Create_Row(
+                   Left, Right : in     String;
+                   Table       : in out Gnoga.Gui.Element.Table.Table_Type'Class
+                  ) is
+                    use Gnoga.Gui.Element.Table;
+                    row  : constant Table_Row_Access    := new Table_Row_Type;
+                    col1 : constant Table_Column_Access := new Table_Column_Type;
+                    col2 : constant Table_Column_Access := new Table_Column_Type;
+                Begin
+                    row.Dynamic;
+                    col1.Dynamic;
+                    col2.Dynamic;
+
+                    row.Create (Table);
+                    col1.Create (row.all, Left );
+                    col2.Create (row.all, Right);
+                End Create_Row;
+
+                procedure Create_Title(
+                   Title  : in     String;
+                   Table  : in out Gnoga.Gui.Element.Table.Table_Type'Class
+                  ) is
+                    use Gnoga.Gui.Element.Table;
+                    Head : constant Table_Header_Access := new Table_Header_Type;
+                    Row  : constant Table_Row_Access    := new Table_Row_Type;
+                    Col  : constant Table_Heading_Access:= new Table_Heading_Type;
+                begin
+                    head.Dynamic;
+                    row.Dynamic;
+                    col.Dynamic;
+
+                    head.Create(Table);
+                    row.Create (Head.all);
+                    col.Create (row.all, Title, Column_Span => 2 );
+                end;
+
+                EMail_Window : Gnoga.Gui.Window.Window_Type;
+                EMail_View   : Gnoga.Gui.View.View_Access:= new Gnoga.Gui.View.View_Type;
+                EMail_Doc    : Gnoga.Gui.Document.Document_Access:= new Gnoga.Gui.Document.Document_Type;
+                Table        : Gnoga.Gui.Element.Table.Table_Type;
+                Done_Button  : Gnoga.Gui.Element.Common.Button_Type;
+--                  renames App_Access (Main_Window.Connection_Data).My_Done;
+            Begin
+                EMail_View.Dynamic;
+                Table.Dynamic;
+--                  Ada.Text_IO.Put_Line(
+--                     --NSO.JSON.Gnoga_Object.As_Form(Main_Window).Parameters.To_String
+--                     Observation_Report_TO_HTML( NSO.JSON.Gnoga_Object.As_Form(Main_Window) )
+--                    );
+
+                TRY_CATCHING_INTERMITTENT_ERROR:
+                Declare
+                    Function Make_ID( Number : Positive ) return String is
+                        Package IT is new Ada.Text_IO.Integer_IO( Positive );
+                        Maximum : Constant := 8;
+                        Temp    : String(1..12);
+                    Begin
+                        IT.Put(To => Temp, Item => Number, Base => 16);
+
+                        EXTRACT_HEX:
+                        Declare
+                            Use Ada.Strings, Ada.Strings.Fixed;
+                            Start : Natural renames Natural'Succ(Index(Temp, "#", Forward));
+                            Stop  : Natural renames Natural'Pred(Index(Temp, "#", Backward));
+                            Value : String  renames Temp(Start..Stop);
+                        Begin
+                            Return Result : String (1..Maximum):=
+                              (1..Maximum - Value'Length => '0') & Value do
+                                ID_For_Email:= Integer'Succ(ID_For_Email);
+                            End return;
+                        End EXTRACT_HEX;
+                    End Make_ID;
+
+                    Raw_ID : Constant String := Make_ID( ID_For_Email );
+                Begin
+                    -- Manually setting a run-time ID does not fix the intermittent errors.
+                    -- I get STORAGE_ERROR, PROGRAM_ERROR (adjust/finalize raising),
+                    -- GNOGA.SERVER.CONNECTION.SCRIPT_ERROR, GNOGA.SERVER.CONNECTION.CONNECTION_ERROR,
+                    -- and "CONSTRAINT_ERROR : bad input for 'Value: "undefined""
+                    -- Why?
+                    EMail_View.Create( Main_Window,    ID => "EMAIL" & Raw_ID );
+                    Table.Create     ( EMail_View.all, ID => "TABLE" & Raw_ID );
+                Exception
+                    when E : Others =>
+                        Ada.Text_IO.Put_Line( "EXCEPTION HAPPENED!!" );
+                        Ada.Text_IO.Put_Line("Name: "& Ada.Exceptions.Exception_Name(E));
+                        Ada.Text_IO.Put_Line("Info: "& Ada.Exceptions.Exception_Information(E));
+                        PRINT_TRACE:
+                        For K of Ada.Exceptions.Traceback.Tracebacks(E) loop
+                            Ada.Text_IO.Put(' ' & System.Address_Image(
+                                 Ada.Exceptions.Traceback.STBE.PC_For(K)
+                               )
+                              );
+                        End loop PRINT_TRACE;
+                End TRY_CATCHING_INTERMITTENT_ERROR;
+
+
+                Table.Style(Name => "width",        Value => "50%");
+                Table.Style(Name => "margin",       Value => "auto");
+                Table.Style(Name => "clear",        Value => "both");
+                Table.Style(Name => "position",     Value => "absolute");
+                Table.Style(Name => "top",          Value => "53%");
+                Table.Style(Name => "left",         Value => "50%");
+                Table.Style(Name => "margin-right", Value => "-50%");
+                Table.Style(Name => "transform",    Value => "translate(-50%, -50%)");
+                Table.Border(Width => "thick");
+
+                Create_Title( "Observation Report",          Table );
+                Create_Row( "Name",       Name,              Table );
+                Create_Row( "Observer",   Observer,          Table );
+                Create_Row( "Message",    Message,           Table );
+                Create_Row( "Conditions", Conditions,        Table );
+                Create_Row( "Weather Report", Weather_Table, Table );
+                Create_Row( "Observation Report", Observation_Table, Table );
+
+                Send_report
+                  (EMail_View.Outer_HTML
+                   --EMail_Doc.Document_Element.Outer_HTML
+--                       EMail_Doc.Head_Element.HTML_Tag &
+--                      (ASCII.CR, ASCII.LF)            &
+--                      EMail_Doc.Body_Element.HTML_Tag
+                  );
+            End EMAIL;
+        end FORM_DATA;
+
+
+    end On_Result_Connect;

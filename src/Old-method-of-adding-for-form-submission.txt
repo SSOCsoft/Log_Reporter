@@ -1,0 +1,126 @@
+    procedure Add_Self(
+       Self    : in     Observation_Report;
+       Form    : in out Gnoga.Gui.Element.Form.Form_Type'Class
+      ) is
+        Use Gnoga.Gui.Element.Common, Gnoga.Gui.Element.Form;
+        Form_Entry     : Constant DIV_Access:= new DIV_Type;
+
+        Insturment_List : String_Vector.Vector renames
+          INI.Section_to_Vector(INI.Parameters.Parameters, "Instrument");
+
+        Tuple : Constant Array(1..Positive(Insturment_List.Length)) of Selection_Access:=
+          (Others => new Selection_Type);
+        Trash : Constant IMG_Access := new IMG_Type;
+
+        Function Name( Input : String ) return String is
+            Prefix : Constant String:= "Observation["& Self.Date.Value & "][" &
+                                                   Self.Time.Value & "][";
+            Postfix: Constant String:= "]";
+        Begin
+            return Prefix & Input & Postfix;
+        End Name;
+
+        Function "="(Left, Right : String) return Boolean
+          renames Ada.Strings.Equal_Case_Insensitive;
+    Begin
+        -- SET DYNAMIC --
+        Form_Entry.Dynamic;
+        Trash.Dynamic;
+        For Item of Tuple loop
+            Item.Dynamic;
+        End loop;
+
+--------------------------------------------------------------------------------
+--------------------------------------------------------------------------------
+--------------------------------------------------------------------------------
+
+        -- CREATE FORM INPUTS --
+        Form_Entry.Create (Form, "<span><b>Report for: </b>"&
+                                   Self.Date.Value & ' ' & Self.Time.Value &
+                                 "</span>");
+        CREATE_INSTURMENTS:
+        For X in Tuple'Range loop
+            FORM_SUBMITION:
+            Declare
+                Device     : String renames Insturment_List(X);
+                Insturment : Selection_Type;
+                Submition  : Selection_Type renames Tuple(X).all;
+---- JQUERY WORKAROUND, NO LONGER NEEDED; KEPT FOR REFERENCE.
+--                  Function Element_Count return Natural with Inline is
+--                      Function Direct_Option_Count return Natural is
+--                          use Gnoga.Server.Connection;
+--                            --JQuery count options: "$('#example option').length"
+--                          Result : String renames Execute_Script(
+--                             ID     => Self.Connection_ID,
+--                             Script => "#"& Device &" option').length"
+--                            );
+--                      Begin
+--                          Return Integer'Value( Result );
+--                      End Direct_Option_Count;
+--                  Begin
+--                      Return Insturment.Length;
+--                  exception
+--                      when CONSTRAINT_ERROR =>
+--                          return Direct_Option_Count;
+--                  End Element_Count;
+            Begin
+                -- Assiciate 'Insturment' with the proper insturment from the INI file.
+                Insturment.Attach_Using_Parent(ID => Device, Parent => Self);
+
+                -- Create the form-element that will be submitted.
+                Submition.Create(
+                   Form            => Form,
+                   Multiple_Select => True,
+                   Name            => Name(Device)
+                  );
+
+                -- Populate the form-element.
+                SUBMITION_POPULATION:
+                For Item in 1..Insturment.Length loop
+                    Declare
+                        Option : Option_Type;
+                        Value  : String renames Insturment.Value(Index => Item);
+                        Text   : String renames Insturment.Text (Index => Item);
+                    Begin
+                        if Insturment.Selected(Item) then
+                            Option.Dynamic;
+                            Option.Create(
+                               Form     => Form, Selection => Submition,
+                               Value    => Text,
+                               Text     => Text
+                              );
+                            Option.Selected;
+                        End if;
+                    End;
+                End Loop SUBMITION_POPULATION;
+            End FORM_SUBMITION;
+        End Loop CREATE_INSTURMENTS;
+
+        -- Create the trash-icon.
+        Trash.Create(Form_Entry.All, URL_Source       => "/img/Trashcan-2.png",
+                                     Alternative_Text => "Trash");
+
+        -- SET ATTRIBUTES --
+        Form_Entry.Style("background-image", "linear-gradient(to right, lightgray, dimgray)");
+        Form_Entry.Border_Radius( "1ex" );
+        Form_Entry.Border(Width => "thin", Color => Gnoga.Types.Colors.Dark_Grey);
+        For Item of Tuple loop
+            Item.Read_Only;
+            Item.Background_Color(Value => "transparent");
+            Item.Minimum_Width(Unit => "em", Value => 11);
+        End loop;
+        Trash.Attribute(Name => "Align",   Value => "Top");
+        Trash.Attribute(Name => "OnClick", Value => "return this.parentNode.remove();");
+        Trash.Style("max-width",  "3ex");
+        Trash.Style("max-height", "3ex");
+
+        -- PLACE ITEMS --
+        Tuple(Tuple'First).Place_Inside_Bottom_Of( Form_Entry.all );
+        For Index in Positive'Succ(Tuple'First)..Tuple'Last Loop
+            Tuple(Index).Place_After( Tuple(Positive'Pred(Index)).All );
+        End loop;
+        Trash.Place_After( Tuple(Tuple'Last).All );
+
+        -- ADD TO FORM --
+        Form_Entry.Place_Inside_Bottom_Of( Form );
+    End Add_Self;

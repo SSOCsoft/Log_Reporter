@@ -1,0 +1,105 @@
+        -- Process_Key provides validation for processing the parameters from
+        -- a form.
+        Generic
+            Value : String;
+        Package Process_Key is
+            Function Correct_Report return Boolean;
+            Function Correct_Form   return Boolean;
+
+            Function Date  return String;
+            Function Time  return String;
+            Function Field return String;
+
+            Function Date return Ada.Calendar.Time;
+        Private
+            Use Fixed;
+            Function "&"( Left: Positive; Right : Natural ) return Positive
+              renames Natural'Max;
+            -- Date
+            OB1 : Natural renames Index(Value, (1=>Left_Bracket));
+            CB1 : Natural renames Index(Value, (1=>Right_Bracket), From =>  1&OB1);
+            -- Time
+            OB2 : Natural renames Fixed.Index(Value, (1=>Left_Bracket),  From =>  1&CB1);
+            CB2 : Natural renames Fixed.Index(Value, (1=>Right_Bracket), From =>  1&OB2);
+            -- Feild
+            OB3 : Natural renames Fixed.Index(Value, (1=>Left_Bracket),  From =>  1&CB2);
+            CB3 : Natural renames Fixed.Index(Value, (1=>Right_Bracket), From =>  1&OB3);
+        End Process_Key;
+--------------------------------------------------------------------------------
+--------------------------------------------------------------------------------
+--------------------------------------------------------------------------------
+        Package Body Process_Key is
+            Function Correct_Report return Boolean is
+              (Fixed.Index(Value, Report_Name) = Value'First);
+
+            Function Correct_Form return Boolean is
+              (    OB1 in Positive          -- The first open-bracket exists;
+               and CB1 > OB1                -- The first close-bracket is later;
+               and OB2 = Positive'Succ(CB1) -- The second open-bracket immidately follows;
+               and CB2 > OB2                -- The second close-bracket is later;
+               and OB3 = Positive'Succ(CB2) -- The third open-bracket immidately follows;
+               and CB3 > OB3                -- And is subsequently closed.
+              );
+
+            Function Date  return String is
+              ( Value(Positive'Succ(OB1)..Positive'Pred(CB1)) );
+            Function Time  return String is
+              ( Value(Positive'Succ(OB2)..Positive'Pred(CB2)) );
+            Function Field return String is
+              ( Value(Positive'Succ(OB3)..Positive'Pred(CB3)) );
+
+            Function Date return Ada.Calendar.Time is
+                -- A time-image *must* be formatted: "YYYY-MM-DD HH:MM:SS".
+                Time_String : Constant String :=
+                  Date & ' ' & Time & ":00";
+            Begin
+                Return Ada.Calendar.Formatting.Value( Time_String );
+            End;
+
+        End Process_Key;
+
+
+
+
+        Function Flatten(Object: Instance'Class:= Data) return String_Map.Map is
+            Use String_Map;
+        Begin
+            Return Result : Map := Empty_Map do
+                Declare
+                    Procedure Add_Item(Key : String; Value : Instance'Class) is
+                    begin
+                        Result.Include(New_Item => -Value, Key => Key);
+                    end Add_Item;
+
+                    Procedure Do_It is new NSO.JSON.Apply
+                      ( On_Object => Add_Item );
+
+                    Temp : Instance'Class := Object;
+                Begin
+                    Do_It( Temp );
+                End;
+            End return;
+        End Flatten;
+
+        Procedure Prune(Object : in out String_Map.Map) is
+            Deletion_Keys : String_Vector.Vector;
+            Procedure Filter( Cursor : String_Map.Cursor ) is
+                Key     : String renames String_Map.Key( Cursor );
+                Current : String_Map.Cursor := Cursor;
+                Package Process is new Process_Key( Key );
+            Begin
+--                Ada.Text_IO.Put_Line( "Key: " & Key & ASCII.HT & "Val:" & String_Map.Element(Cursor)  );
+                if not Process.Correct_Report or else not Process.Correct_Form then
+                    Deletion_Keys.Append( Key );
+--                      Object.Delete( Current );
+                end if;
+            End Filter;
+        Begin
+            Object.Reverse_Iterate(Process => Filter'Access);
+            for X of Deletion_Keys loop
+                Object.Delete( X );
+                if DEBUGGING then
+                    ada.Text_IO.Put_Line( "DELETING KEY: " & X );
+                end if;
+            end loop;
+        End Prune;

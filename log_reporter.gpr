@@ -1,0 +1,31 @@
+with "gnoga.gpr";
+
+project Log_Reporter is
+
+   for Source_Dirs use ("src");
+   for Object_Dir use "obj";
+   for Main use ("main.adb");
+   for Exec_Dir use ".";
+
+   package Compiler is
+      for Switches ("ada") use ("-fcallgraph-info=su,da", "-gnato", "-fstack-check", "-g", "-gnata", "-gnatn");
+   end Compiler;
+
+   package Binder is
+      for Switches ("ada") use ("-E", "-shared");
+   end Binder;
+
+   package Linker is
+      for Switches ("ada") use ("-g");
+   end Linker;
+
+   package Prove is
+      for Switches use ("-j4", "--level=4", "--steps=10");
+   end Prove;
+
+   package Builder is
+      for Switches ("ada") use ("-j0", "-g", "-C", "-s");
+   end Builder;
+
+end Log_Reporter;
+

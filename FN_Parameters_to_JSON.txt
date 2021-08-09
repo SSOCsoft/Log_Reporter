@@ -1,0 +1,445 @@
+        Function Parameters_to_JSON( Input : in out Gnoga.Types.Data_Map_Type ) return NSO.JSON.Instance'Class is
+            Use NSO.JSON, NSO.Types, NSO.Types.String_Map;
+
+            Package Param_Tree is New Ada.Containers.Indefinite_Multiway_Trees
+              (Element_Type => String,
+               "="          => Ada.Strings.Equal_Case_Insensitive
+              );
+
+            Function Handle_Value( Value: String ) return Instance'Class;
+            Subtype Tree is Param_Tree.Tree;
+
+            Function To_Tree( Input : in Gnoga.Types.Data_Map_Type ) return Tree is
+                Open   : Constant Character := '[';
+                Close  : Constant Character := ']';
+                Result : Tree := Param_Tree.Empty_Tree;
+
+                Procedure To_Tree( Current    : Param_Tree.Cursor:= Result.Root;
+                                   Key, Value : String
+                                 ) is
+
+                    Function First_Index(Bracket : Character) return Natural is
+                      (Ada.Strings.Fixed.Index(
+                          Source  => Key,
+                          Pattern => (1 => Bracket),
+                          From    => Key'First,
+                          Going   => Ada.Strings.Forward
+                         )
+                      );
+
+                    First_Open  : Natural renames First_Index( Open  );
+                    First_Close : Natural renames First_Index( Close );
+                    K : Param_Tree.Tree;
+                    This : Param_Tree.Cursor;
+                Begin
+
+                    if First_Open > Key'First then -- There's something before,
+                        Result.Insert_Child(
+                           Parent   => Current,
+                           Before   => Param_Tree.No_Element,
+                           New_Item => Key(Key'First..First_Open-1),
+                           Position => This
+                          );
+                        To_Tree( This, Key(First_Open..key'Last), Value );
+                    elsif First_Open = First_Close then -- no indexing,
+                        Result.Insert_Child(
+                           Parent   => Current,
+                           Before   => Param_Tree.No_Element,
+                           New_Item => Key,
+                           Position => This
+                          );
+                        Result.Insert_Child(
+                           Parent   => This,
+                           Before   => Param_Tree.No_Element,
+                           New_Item => Value,
+                           Position => This
+                          );
+                    elsif First_Open < First_Close then -- normal,
+                        Result.Insert_Child(
+                           Parent   => Current,
+                           Before   => Param_Tree.No_Element,
+                           New_Item => Key(First_Open+1..First_Close-1),
+                           Position => This
+                          );
+                        if First_Close = Key'Last then
+                            Result.Insert_Child(
+                               Parent   => This,
+                               Before   => Param_Tree.No_Element,
+                               New_Item => Value,
+                               Position => This
+                              );
+                        else
+                            To_Tree(This, Key(First_Close+1..Key'Last), Value);
+                        end if;
+                    else -- First_Open > First_Close    -- malformed indexing.
+                        raise NSO.JSON.Parse_Error with "Bad indexing: '"
+                                  & Key & "'.";
+                    end if;
+                End To_Tree;
+
+            Begin
+                for KVP in Input.Iterate loop
+                    To_Tree(
+                       Key   => Gnoga.Types.Data_Maps.Key(KVP),
+                       Value => Gnoga.Types.Data_Maps.Element(KVP)
+                      );
+                end loop;
+
+                Return Result;
+            End To_Tree;
+
+            Function From_Tree( Input : Tree ) return NSO.JSON.Object_Object is
+                Package PT renames Param_Tree;
+                
+                Subtype Value_Style is Value_Kind
+                  with Static_Predicate => Value_Style in
+                    VK_Null | VK_String | VK_Array | VK_Object;
+                
+                -- If all children are leaves then:
+                --  0 children    -> This is a leaf            -> VK_Null.
+                --  1 child       -> child is a value          -> VK_String.
+                --  more children -> children are an array     -> VK_Array.
+                -- Otherwise:
+                --  This is an object w/ more processing to do -> VK_Object.
+                --
+                -- WARNING: These are NOT the actual parsed-types.
+                Function Kind(Position : in     PT.Cursor) return Value_Style is
+                    Children            : constant Natural :=
+                      Natural(Param_Tree.Child_Count(Position));
+                    Are_Children_Leaves : constant Boolean :=
+                      (for all Child in Input.Iterate_Children(Position) =>
+                           Param_Tree.Is_Leaf(Child) );
+                Begin
+                    Return (if not Are_Children_Leaves then VK_Object
+                            else (case Children is
+                                  when 0      => VK_Null,
+                                  when 1      => VK_String,
+                                  when others => VK_Array
+                               )
+                           );
+                End Kind;
+
+                
+                
+                Procedure  Make_Instance(
+                   Position : in     PT.Cursor;
+                   Current  : in out Object_Object
+                    ) is
+                    
+                    Style : Value_Style renames Kind( Position );
+                Begin
+                    Declare
+                        Text   : String renames PT.Element(Position);                        
+                        Result : Instance'Class:=
+                          (case Style is
+                               when VK_Array  => Make_Array,
+                               when VK_String => Handle_Value( PT.Element(PT.First_Child(Position)) ),
+                               when VK_Null   => Handle_Value( PT.Element(Position) ),
+                               when VK_Object => (if   Current.Exists(Text)
+                                                  then Current.Value(Text)
+                                                  else Make_Object
+                                                 )
+                            );
+                    Begin
+                        Ada.Text_IO.Put_Line( "||||" & Text & '/' & Style'Image
+                            & (if Style = VK_String then (if result in Array_Object then ".Array" else ".Value") else "")
+                          );
+                        case Style is
+                        when VK_Null   => Return;
+                        when VK_String => null;
+                        when VK_Array  =>
+                            declare
+                                Object : Array_Object renames Array_Object( Result );
+                                Item   : PT.Cursor:= PT.First_Child(Position);
+                            begin
+                                loop
+                                    Object.Append( Handle_Value(PT.Element(Item)) );
+                                    PT.Next_Sibling(Item);
+                                    exit when not PT.Has_Element( Item );
+                                end loop;
+                            end;
+                        when VK_Object =>
+                            declare
+                                Object : Object_Object renames Object_Object( Result );
+                                Item   : PT.Cursor:= PT.First_Child(Position);
+                            begin
+                                loop
+                                    Make_Instance(Item, Object);
+                                    --Object.Include(Name => PT.Element(Item), Value => Make_Instance(Item, Object));
+                                    PT.Next_Sibling(Item);
+                                    exit when not PT.Has_Element( Item );
+                                end loop;
+                            end;
+
+                        end case;
+                        
+                        Current.Value(Text, Result);
+                    End;
+                End Make_Instance;
+                
+--                  Function  Make_Instance(
+--                     Position : in     PT.Cursor;
+--                     Current  : in out Object_Object
+--                      ) return Instance'Class is
+--                      --Key  : String  renames PT.Element(PT.Parent(Position));
+--                      Leaf : Boolean renames PT.Is_Leaf(Position);
+--                  Begin
+--                      Return Result : Instance'Class :=
+--                        (if not Leaf then NSO.JSON.Make_Object
+--                         else Handle_Value( PT.Element(Position) )) do
+--                          if not Leaf then
+--                              declare
+--                                  Object : Object_Object renames Object_Object( Result );
+--                                  Item   : PT.Cursor:= PT.First_Child(Position);
+--                              begin
+--                                  loop
+--                                      Object.Include(Name => PT.Element(Item), Value => Make_Instance(Item, Object));
+--                                      PT.Next_Sibling(Item);
+--                                      exit when not PT.Has_Element( Item );
+--                                  end loop;
+--                              end;
+--                              Current.Value(PT.Element(Position), Result);
+--                          end if;
+--                      end return;
+--                  End Make_Instance;
+
+                Result : Object_Object:= Object_Object(NSO.JSON.Make_Object);
+            begin
+                --Return Object_Object(Make_Instance( Input.Root, Result ));
+                Return Result : Object_Object:= Object_Object(NSO.JSON.Make_Object) do
+                    For Child in Input.Iterate_Children(Input.Root) loop
+                        Make_Instance(Child, Result);
+                    End loop;
+                End return;
+            end From_Tree;
+
+
+
+            -- Here we normalize the keys, and place them into an ordered map for processing.
+            Function Normalize( Input : in Gnoga.Types.Data_Map_Type ) return Map is
+                Use Gnoga.Types.Data_Maps, Ada.Strings.Fixed;
+                Open   : Constant Character := '[';
+                Close  : Constant Character := ']';
+
+                Function Normalize( Input : String ) return String is
+                    First_Open : Natural := Ada.Strings.Fixed.Index
+                      (Source  => Input,
+                       Pattern => (1 => Open),
+                       From    => Input'First
+                      );
+                Begin
+                    if First_Open not in positive then
+                        return Open & Input & Close;
+                    else
+                        return Open & Input(Input'First..First_Open-1) & Close
+                         & Input(First_Open..Input'Last);
+                    end if;
+                End;
+
+                Result : String_Map.Map:= String_Map.Empty_Map;
+            Begin
+                For Current in Input.Iterate loop
+                    Declare
+                        Index  : String renames Key( Current );
+                        Normal : Constant Boolean := Index(Index'First) = Open;
+                    Begin
+                        Result.Insert(
+                           Key => (if Normal then Index else Normalize(Index)),
+                           New_Item => Element( Current )
+                          );
+                    End;
+                end loop;
+
+                for X in Result.Iterate loop
+                    Ada.Text_IO.Put_Line("RESULT : " & Key(X)  );
+                end loop;
+
+                Return Result;
+            End Normalize;
+
+
+            -- Parses the values associated with a given key.
+            -- It is either a single value, or an array of values delimited by
+            -- the Unit_Seperator control-character.
+            Function Handle_Value( Value: String ) return Instance'Class is
+                Unit_Separator : Constant Character := Character'Val( 31 );
+                US_STR         : Constant String    := (1 => Unit_Separator);
+                First_Index    : Natural := Value'First;
+                Last_Index     : Natural :=
+                    Ada.Strings.Fixed.Index(
+                               Pattern => US_STR,
+                               Source  => Value,
+                               From    => First_Index
+                              );
+            Begin
+                if Last_Index not in Positive then
+                    Return Make( Value );
+                else
+                    Return Result : Array_Object := Array_Object(Make_Array) do
+                        COLLECT_ELEMENTS:
+                        loop
+                            declare
+                                Marker : Constant Natural:=
+                                  (if Last_Index in Positive
+                                   then Positive'Pred(Last_Index)
+                                   else Value'last
+                                  );
+                                Subtype Slice is Positive range
+                                  First_Index..Marker;
+                                Data : String renames Value(Slice);
+                            begin
+                                Array_Object(Result).Append( Make(Data) );
+                                exit COLLECT_ELEMENTS when Slice'Last = Value'Last;
+                                First_Index:= Last_Index + US_STR'Length;
+                                Last_Index := Ada.Strings.Fixed.Index(
+                                   Pattern => US_STR,
+                                   Source  => Value,
+                                   From    => First_Index
+                                  );
+                            end;
+                        end loop COLLECT_ELEMENTS;
+                    End return;
+                end if;
+            End Handle_Value;
+
+
+            Function New_Object return Object_Object is
+              ( Object_Object(Make_Object) ) with Inline;
+
+            Function "*"(Left : Natural; Right : Character) return String is
+                (1..Left => Right);
+            
+--            Data : NSO.Types.String_Map.Map:= Normalize(Input);
+        Begin
+--              DEBUG_INPUT:
+--              Declare
+--                  Use Gnoga.Types.Data_Maps;
+--                  --D : NSO.Types.String_Map.Map:= Normalize(Input);
+--              Begin
+--                  Ada.Text_IO.Put_Line( 80 * '-');
+--                  For KVP in Input.Iterate loop
+--                      Ada.Text_IO.Put_Line( "@@[ " & Key(KVP) & ':'
+--                                                   & Element(KVP) & " ]@@");
+--                  end loop;
+--                  
+--                  DEBUG_TO_TREE:
+--                  declare
+--                      T : constant Param_Tree.Tree := To_Tree( Input );
+--                      Use Param_Tree;
+--                  Begin
+--                      Ada.Text_IO.Put_Line( 80 * '-');
+--                      For Position in T.Iterate loop
+--                          Ada.Text_IO.Put_Line( "@@[ " & Element(Position) & (if Is_Leaf(Position) then " [LEAF]" else "") & " ]@@");
+--                      end loop;
+--                      
+--                      DEBUG_FROM_TREE:
+--                      Declare
+--                          J : constant NSO.JSON.Object_Object:= From_Tree(T);
+--                          use NSO.JSON;
+--                      Begin
+--                          Ada.Text_IO.Put_Line( 80 * '-');
+--                          Ada.Text_IO.Put_Line( "@@[ " & J.To_String & " ]@@" );
+--                      end DEBUG_FROM_TREE;
+--                  end DEBUG_TO_TREE;
+--                  Ada.Text_IO.Put_Line( 80 * '-');
+--              end DEBUG_INPUT;
+            
+            
+            
+            Return From_Tree( To_Tree( Input ) );
+--              Return Result : Object_Object := New_Object do
+--
+--
+--                  POPULATE_ROOT_OBJECT:
+--                  Declare
+--
+--                      Function Indexed( Key : String; Value : out Natural ) return Boolean is
+--                          Location : Natural renames Ada.Strings.Fixed.Index(Key, (1=>'['));
+--                      Begin
+--                          Return Result : Constant Boolean := Location in Positive do
+--                              Value:= Location;
+--                          End return;
+--                      end Indexed;
+--
+--                      Function Get_Base( Key : String ) return String is
+--                          Marker : Natural;
+--                      Begin
+--                          Return (if not Indexed(Key, Marker) then Key
+--                                  else Key(Key'First..Positive'Pred(Marker))
+--                                 );
+--                      end Get_Base;
+--
+--
+--                      Function Indices(Key : String) return NSO.Types.String_Vector.Vector is
+--  --                          Use Ada.Strings.Fixed, NSO.Types.String_Vector;
+--                          Open  : Constant Character := '[';
+--                          Close : Constant Character := ']';
+--
+--                          --Key'Last
+--                          Generic
+--                              From : in out Natural;
+--                          Function Last_Index(Bracket : Character) return Natural;
+--                          Function Last_Index(Bracket : Character) return Natural is
+--                            (Ada.Strings.Fixed.Index(
+--                                Source  => Key,
+--                                Pattern => (1 => Bracket),
+--                                From    => From,
+--                                Going   => Ada.Strings.Backward
+--                               )
+--                            );
+--
+--                          --Last_Close : Natural := Last_Index( Close );
+--                          --Last_Open  : Natural := Last_Index( Open  );
+--
+--                          Result : NSO.Types.String_Vector.Vector;
+--                      Begin
+--                          Return xxxResult : NSO.Types.String_Vector.Vector do
+--                              null;
+--  --                              if Last_Open = Last_Close then
+--  --                                  Result.Prepend(  );
+--  --                              end if;
+--  --
+--  --                              if Start = Stop then
+--  --                                  Result.Append( Key );
+--  --                                  Return;
+--  --                              elsif then
+--  --                              else
+--  --                              end if;
+--                          End return;
+--                      End;
+--
+--
+--                      Root_Fields : NSO.Types.String_Vector.Vector;
+--                      Index       : Natural:= 0;
+--                  Begin
+--                      For Field in Input.Iterate loop
+--                          Declare
+--                              Procedure Add( Object : in out Object_Object ) with Inline;
+--                              Package Data_Map renames Gnoga.Types.Data_Maps;
+--                              Key     : String renames Data_Map.Key(Field);
+--                              Element : String renames Data_Map.Element(Field);
+--                              Base    : String renames Get_Base( Key );
+--
+--                              Procedure Add( Object : in out Object_Object ) is
+--                              Begin
+--                                  Object.Value(
+--                                     Name  => Key,
+--                                     Value => Handle_Value(Element)
+--                                    );
+--                              End Add;
+--                          Begin
+--                              null;
+--  --                              if Indexed(Key, Index) then
+--  --
+--  --                              else
+--  --                                  Add( Result );
+--  --                              end if;
+--                          End;
+--
+--
+--                      End loop;
+--
+--                  End POPULATE_ROOT_OBJECT;
+--
+--              end return;
+        end Parameters_to_JSON;

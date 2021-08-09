@@ -1,0 +1,91 @@
+    Function Report(Data : in NSO.JSON.Instance'Class) return Report_Map.Map is
+        Use NSO.Types, NSO.JSON, Ada.Strings.Fixed;
+        Package Fixed renames Ada.Strings.Fixed;
+
+        Function Filter( Input : JSON.Instance'Class := Data ) return Instance'Class is
+        Begin
+            if Input in Object_Object then
+                Declare
+                    Object  : Object_Object renames  Object_Object( Input );
+                    Element : Instance'Class renames Object.Value(Report_Name);
+                Begin
+                    Ada.Text_IO.Put_Line( Element.To_String );
+                    return Element;
+                End;
+            else
+                Ada.Text_IO.Put_Line( Input.To_String );
+                raise Program_Error with Ada.Tags.Expanded_Name(Input'Tag) &
+                  " is not supported, parameters must be a JSON Object type.";
+            end if;
+        Exception
+            when Constraint_Error => -- Raised when the report does not exist.
+                Return NSO.JSON.Make_Object;
+                  --JSON_Class_Input( NSO.Types."+"("{}") );
+        End Filter;
+
+        Function Process_Input(Input : JSON.Instance'Class:= Filter) return Report_Map.Map is
+            Result : Report_Map.Map     := Report_Map.Empty_Map;
+            Package IMP renames Instrument_Mode_Pkg;
+            procedure Process_Date(Date : String; Value : Instance'Class) is
+                Procedure Process_Time(Time : String; Value : Instance'Class) is
+                    Time_String : Constant String := Date & ' ' & Time & ":00";
+                    Date_Time   : Constant Ada.Calendar.Time :=
+                      Ada.Calendar.Formatting.Value(Time_String);
+                    Procedure Process_Instrument(Instrument : String; Value : Instance'Class) is
+                        Map : IMP.Map renames Result(Date_Time);
+                        Procedure Process_Mode(Mode  : String) is
+                            Set : String_Set.Set renames Map(Instrument);
+                        Begin
+                            Set.Include( Mode );
+                        End Process_Mode;
+                        Procedure Process_Mode(Index : Natural; Value : in Instance'Class ) is
+                        Begin
+                            if Value in String_Object then
+                                Process_Mode( Value.To_String );
+                            end if;
+                        End Process_Mode;
+                        Procedure Do_Process is new Apply(
+                           On_String  => Process_Mode,
+                           On_Array   => Process_Mode
+                          );
+                    Begin
+                        if not Map.Contains(Instrument) then
+                            Map.Include(Instrument, String_Set.Empty_Set);
+                        end if;
+                        Do_Process( Value );
+                    End Process_Instrument;
+                    Procedure Do_Process is new Apply(On_Object => Process_Instrument);
+                Begin
+                    if not Result.Contains( Date_Time ) then
+                        Result.Include(Date_Time, IMP.Empty_Map);
+                    end if;
+                    Do_Process( Value );
+                End Process_Time;
+                Procedure Do_Process is new Apply(On_Object => Process_Time);
+            Begin
+                Do_Process( Value );
+            End Process_Date;
+
+            Procedure Do_Process is new Apply(On_Object => Process_Date);
+        Begin
+            Do_Process( Object => Input);
+            Return Result;
+        End Process_Input;
+
+    Begin
+        Return Result : Report_Map.Map := Process_Input do
+            if DEBUGGING then
+                Ada.Text_IO.Put_Line( "-------- START DEBUG --------"  );
+                for X of Result loop
+                    for Y in X.iterate loop
+                        Ada.Text_IO.Put_Line( Instrument_Mode_Pkg.key(Y) );
+                        for Z of Instrument_Mode_Pkg.Element(Y) loop
+                            Ada.Text_IO.Put( "    " & Z & ", " );
+                        end loop;
+                        Ada.Text_IO.New_Line;
+                    end loop;
+                end loop;
+                Ada.Text_IO.Put_Line( "-------- STOP DEBUG --------"  );
+            end if;
+        End return;
+    End Report;
